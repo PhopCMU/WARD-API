@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN // ผู้ดูแลระบบ
+  STAFF // เจ้าหน้าที่โรงพยาบาลสัตว์
+  USER // ผู้ใช้งานทั่วไป (แพทย์)
+}
+
+enum LineGroup {
+  MEDICINE // กลุ่มไลน์สำหรับแพทย์อายุรกรรม
+  SPECIALIST // กลุ่มไลน์สำหรับแพทย์เฉพาะทางอื่นๆ
+  SURGERY // กลุ่มไลน์สำหรับแพทย์ศัลยกรรม
+  WARD // กลุ่มไลน์สำหรับการดูแลสัตว์ป่วยใน Ward
+}
+
+enum TypeRoom {
+  CCU // ห้องสัตว์ป่วยวิกฤต (Critical Care Unit)
+  DOG_NON_INFECTIOUS // สุนัขไม่ติดเชื้อ
+  CAT_CLEAN // แมวปลอดเชื้อ
+  CAT_QUARANTINE // แมวกักโรค
+  CAT_GI_INFECTIOUS // แมวติดเชื้อทางเดินอาหาร
+  CAT_RESP_INFECTIOUS // แมวติดเชื้อทางเดินหายใจ
+  DOG_GI_INFECTIOUS // สุนัขติดเชื้อทางเดินอาหาร
+  DOG_RESP_INFECTIOUS // สุนัขติดเชื้อทางเดินหายใจ
+  RECOVERY // ห้องพักฟื้น
+}
+
+enum CageType {
+  PAVILION // Pavilion (≤ 8 kg)
+  UNDER_10KG // น้ำหนักน้อยกว่า 10 kg
+  KG_10_TO_20 // น้ำหนัก 10 - 20 kg
+  OVER_20KG // น้ำหนักมากกว่า 20 kg
+  UNLIMITED // ไม่จำกัดน้ำหนัก
+}
+
+enum AuditModule {
+  AUTH // ระบบยืนยันตัวตน
+  USER // จัดการผู้ใช้งาน
+  ROOM // จัดการห้อง
+  CAGE // จัดการกรง
+  PATIENT // ข้อมูลผู้ป่วยสัตว์
+  RESERVATION // การจองกรง
+  WARD // การดูแลสัตว์ป่วยใน Ward
+}
+
+enum AuditAction {
+  CREATE // สร้างข้อมูล
+  UPDATE // แก้ไขข้อมูล
+  DELETE // ลบข้อมูล
+  LOGIN // เข้าสู่ระบบ
+  LOGOUT // ออกจากระบบ
+  RESERVE_CAGE // จองกรง
+  CANCEL_RESERVATION // ยกเลิกการจอง
+  EXTEND_RESERVATION // ขยายเวลาการจอง
+  ADMIT // รับสัตว์เข้ารักษา
+  DISCHARGE // จำหน่ายสัตว์ออก
+  TRANSFER_CASE // ส่งต่อเคส
+  CHANGE_STATUS // เปลี่ยนสถานะ
+}
+
+enum Species {
+  DOG // สุนัข
+  CAT // แมว
+}
+
+enum ReservationStatus {
+  RESERVED // จองแล้ว
+  ADMITTED // Admit แล้ว
+  DISCHARGED // ออกจากการรักษาแล้ว
+  CANCELLED // ยกเลิก
+}
+
+enum caseType {
+  NORMAL // เคสทั่วไป
+  VIP // เคส VIP (เช่น สัตว์เลี้ยงของบุคคลสำคัญ หรือเคสที่ต้องการการดูแลเป็นพิเศษ)
+}
+
+////////////////////////////////////////////////
+// LINE GROUP TABLE
+////////////////////////////////////////////////
+model LineGroupOfficial {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  groupId   String   @unique // รหัสกลุ่มไลน์ (เช่น LINE_MEDICINE, LINE_SPECIALIST, LINE_SURGERY, LINE_WARD)
+  groupName String? // ชื่อกลุ่มไลน์ (เช่น กลุ่มไลน์สำหรับแพทย์อายุรกรรม, กลุ่มไลน์สำหรับแพทย์เฉพาะทางอื่นๆ, กลุ่มไลน์สำหรับแพทย์ศัลยกรรม, กลุ่มไลน์สำหรับการดูแลสัตว์ป่วยใน Ward)
+  isActive  Boolean  @default(true) // สถานะการใช้งานของกลุ่มไลน์ (true = ใช้งานได้, false = ไม่ใช้งาน)
+  createdAt DateTime @default(now()) // วันที่สร้างข้อมูลกลุ่มไลน์
+  updatedAt DateTime @updatedAt // วันที่อัพเดตข้อมูลกลุ่มไลน์ล่าสุด
+
+  @@index([groupId])
+  @@map("line_group_officials")
+}
+
+////////////////////////////////////////////////
+// CMU ACCOUNT TABLE
+////////////////////////////////////////////////
+model CmuItAccount {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cmuId                String        @unique // CMU-00-00000-2025 > CODE = CMU , PASS = 00:CmuItAccount(admin) , DATE-TIME = 05031633, YEAR = 2025
+  email                String        @unique
+  name                 String
+  role                 Role          @default(USER)
+  status               Boolean       @default(true)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime?     @updatedAt
+  auditLogs            AuditLog[]
+  referredReservations Reservation[] @relation("ReservationReferrer")
+  createdReservations  Reservation[] @relation("ReservationCreator")
+
+  @@map("cmu_it_accounts")
+}
+
+////////////////////////////////////////////////
+// PATIENT TABLE // ข้อมูลผู้ป่วยสัตว์
+////////////////////////////////////////////////
+model Patient {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hnOwner      String // หมายเลขประจำตัวเจ้าของสัตว์ (Owner HN)
+  hn           String        @unique // หมายเลขประจำตัวผู้ป่วยสัตว์ (HN)
+  animalName   String // ชื่อสัตว์
+  species      Species // ชนิดสัตว์ เช่น สุนัข, แมว
+  breed        String? // สายพันธุ์สัตว์
+  sex          String? // เพศสัตว์
+  weightKg     Float // น้ำหนักสัตว์ (กิโลกรัม)
+  status       Boolean       @default(true) // สถานะการรักษา (true = กำลังรักษา, false = จำหน่ายออกจากโรงพยาบาล)
+  createdAt    DateTime      @default(now()) // วันที่สร้างข้อมูลผู้ป่วยสัตว์
+  updatedAt    DateTime?     @updatedAt // วันที่อัพเดตข้อมูลผู้ป่วยสัตว์ล่าสุด
+  reservations Reservation[]
+
+  @@map("patients")
+}
+
+////////////////////////////////////////////////
+// ROOM TABLE // ข้อมูลห้อง
+////////////////////////////////////////////////
+model Room {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String    @unique // ชื่อห้อง เช่น ห้องสัตว์ป่วยวิกฤต (CCU), ห้องสุนัขไม่ติดเชื้อ, ห้องแมวปลอดเชื้อ เป็นต้น
+  roomType  TypeRoom // ประเภทห้อง
+  color     String    @default("#3B82F6") // สีประจำห้อง (ใช้สำหรับแสดงใน UI)
+  status    Boolean   @default(true) // สถานะการใช้งาน (true = ใช้งานได้, false = ไม่ใช้งาน)
+  cages     Cage[] // ความสัมพันธ์กับตาราง Cage (1 ห้องมีหลายกรง)
+  createdAt DateTime  @default(now()) // วันที่สร้างข้อมูลห้อง
+  updatedAt DateTime? @updatedAt // วันที่อัพเดตข้อมูลห้องล่าสุด
+
+  @@map("rooms")
+}
+
+////////////////////////////////////////////////
+// CAGE TABLE // ข้อมูลกรง
+////////////////////////////////////////////////
+model Cage {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roomId       String        @db.Uuid // รหัสห้องที่กรงนี้อยู่ (foreign key)
+  room         Room          @relation(fields: [roomId], references: [id]) // ความสัมพันธ์กับตาราง Room (กรงอยู่ในห้องหนึ่ง)
+  code         String        @unique // // เช่น CCU-LT10K-001 > ROOM = CCU , TYPE = LT10K , NUMBER = 001
+  cageType     CageType // ประเภทกรง
+  hasOxygen    Boolean       @default(false) // รองรับ Oxygen
+  minWeightKg  Float? // ช่วงน้ำหนักต่ำสุด
+  maxWeightKg  Float? // ช่วงน้ำหนักสูงสุด
+  status       Boolean       @default(true) // สถานะการใช้งาน (true = ใช้งานได้, false = ไม่ใช้งาน)
+  createdAt    DateTime      @default(now()) // วันที่สร้างข้อมูลกรง
+  updatedAt    DateTime?     @updatedAt // วันที่อัพเดตข้อมูลกรงล่าสุด
+  reservations Reservation[]
+
+  @@index([roomId])
+  @@map("cages")
+}
+
+////////////////////////////////////////////////
+// RESERVATION TABLE // ข้อมูลการจองกรง
+////////////////////////////////////////////////
+model Reservation {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId     String            @db.Uuid // รหัสผู้ป่วยสัตว์ (foreign key)
+  patient       Patient           @relation(fields: [patientId], references: [id]) // ความสัมพันธ์กับตาราง Patient (การจองเป็นของผู้ป่วยสัตว์หนึ่ง)
+  cageId        String            @db.Uuid // รหัสกรงที่จอง (foreign key)
+  cage          Cage              @relation(fields: [cageId], references: [id])
+  referredById  String?           @db.Uuid // รหัสผู้แนะนำการจอง (foreign key)
+  referredBy    CmuItAccount?     @relation("ReservationReferrer", fields: [referredById], references: [id]) // ความสัมพันธ์กับตาราง CmuItAccount (การจองอาจมีผู้แนะนำหนึ่งคน)
+  caseType      caseType          @default(NORMAL) // ประเภทเคส (NORMAL = เคสทั่วไป, VIP = เคสพิเศษ)
+  status        ReservationStatus @default(RESERVED) // สถานะการจอง (RESERVED = จองแล้ว, ADMITTED = Admit แล้ว, DISCHARGED = ออกจากการรักษาแล้ว, CANCELLED = ยกเลิก)
+  admitDate     DateTime // วันที่รับสัตว์เข้ารักษา
+  dischargeDate DateTime? // วันที่จำหน่ายสัตว์ออกจากการรักษา
+  diagnosis     String? // การวินิจฉัยโรค
+  note          String? // หมายเหตุเพิ่มเติม
+  hnOwner       String // หมายเลขประจำตัวเจ้าของสัตว์ (Owner HN)
+  createdById   String            @db.Uuid // รหัสผู้สร้างการจอง (foreign key)
+  createdBy     CmuItAccount      @relation("ReservationCreator", fields: [createdById], references: [id]) // ความสัมพันธ์กับตาราง CmuItAccount (การจองถูกสร้างโดยผู้ใช้งานหนึ่งคน)
+  createdAt     DateTime          @default(now()) // วันที่สร้างข้อมูลการจอง
+  updatedAt     DateTime?         @updatedAt // วันที่อัพเดตข้อมูลการจองล่าสุด
+
+  @@index([patientId])
+  @@index([cageId])
+  @@map("reservations")
+}
+
+////////////////////////////////////////////////
+// AUDIT LOG TABLE // บันทึกการกระทำต่างๆ ในระบบ
+////////////////////////////////////////////////
+model AuditLog {
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?       @db.Uuid // รหัสผู้ใช้งานที่ทำการกระทำ (foreign key)
+  user      CmuItAccount? @relation(fields: [userId], references: [id]) // ความสัมพันธ์กับตาราง CmuItAccount (การกระทำอาจถูกทำโดยผู้ใช้งานหนึ่งคน)
+  module    AuditModule // โมดูลที่เกิดการกระทำ เช่น ระบบยืนยันตัวตน, จัดการผู้ใช้งาน, จัดการห้อง, จัดการกรง, ข้อมูลผู้ป่วยสัตว์, การจองกรง, การดูแลสัตว์ป่วยใน Ward เป็นต้น
+  action    AuditAction // ประเภทการกระทำ เช่น สร้างข้อมูล, แก้ไขข้อมูล, ลบข้อมูล, เข้าสู่ระบบ, ออกจากระบบ, จองกรง, ยกเลิกการจอง, ย้ายกรง, รับสัตว์เข้ารักษา, จำหน่ายสัตว์ออกจากการรักษา, ส่งต่อเคส, เปลี่ยนสถานะ เป็นต้น
+  tableName String // ชื่อตารางที่เกิดการกระทำ เช่น cmu_it_accounts, rooms, cages, patients, reservations เป็นต้น
+  recordId  String // รหัสของเรคคอร์ดที่เกิดการกระทำ (เช่น id ของตารางที่ถูกกระทำ)
+  oldData   Json? // ข้อมูลก่อนการกระทำ (เก็บเป็น JSON เพื่อความยืดหยุ่นในการเก็บข้อมูลที่หลากหลาย)
+  newData   Json? // ข้อมูลหลังการกระทำ (เก็บเป็น JSON เพื่อความยืดหยุ่นในการเก็บข้อมูลที่หลากหลาย)
+  metadata  Json? // ข้อมูลเพิ่มเติมเกี่ยวกับการกระทำ เช่น IP address, user agent, หรือข้อมูลบริบทอื่นๆ
+  ipAddress String? // ที่อยู่ IP ของผู้ใช้งานที่ทำการกระทำ
+  userAgent String? // ข้อมูล user agent ของผู้ใช้งานที่ทำการกระทำ
+  createdAt DateTime      @default(now()) // วันที่เกิดการกระทำ
+
+  @@index([userId])
+  @@index([module])
+  @@index([action])
+}
