@@ -3,6 +3,9 @@ export interface RequestInfo {
   method: any;
   url: string;
   userAgent?: string;
+  origin?: string;
+  contentLength?: string;
+  platform?: string;
   datetime: string;
 }
 
@@ -28,6 +31,10 @@ export function getRequestInfo(request: Request): RequestInfo {
     method: request.method ?? "N/A",
     url: request.url ?? "N/A",
     userAgent: request.headers.get("user-agent") ?? undefined,
+    origin: request.headers.get("origin") ?? undefined,
+    contentLength: request.headers.get("content-length") ?? undefined,
+    platform:
+      request.headers.get("sec-ch-ua-platform")?.split('"')[1] ?? undefined,
     datetime,
   };
 }

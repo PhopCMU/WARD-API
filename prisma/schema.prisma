@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   ADMIN // ผู้ดูแลระบบ
   STAFF // เจ้าหน้าที่โรงพยาบาลสัตว์
+  WARD // เจ้าหน้าที่ดูแลสัตว์ป่วยใน Ward
   USER // ผู้ใช้งานทั่วไป (แพทย์)
 }
 
@@ -23,7 +24,7 @@ enum LineGroup {
 enum TypeRoom {
   CCU // ห้องสัตว์ป่วยวิกฤต (Critical Care Unit)
   DOG_NON_INFECTIOUS // สุนัขไม่ติดเชื้อ
-  CAT_CLEAN // แมวปลอดเชื้อ
+  CAT_NON_INFECTIOUS // แมวปลอดเชื้อ
   CAT_QUARANTINE // แมวกักโรค
   CAT_GI_INFECTIOUS // แมวติดเชื้อทางเดินอาหาร
   CAT_RESP_INFECTIOUS // แมวติดเชื้อทางเดินหายใจ
@@ -107,6 +108,7 @@ model CmuItAccount {
   name                 String
   role                 Role          @default(USER)
   status               Boolean       @default(true)
+  token                String? // JWT token สำหรับ session ปัจจุบัน (อัพเดททุกครั้งที่ login)
   createdAt            DateTime      @default(now())
   updatedAt            DateTime?     @updatedAt
   auditLogs            AuditLog[]
@@ -141,7 +143,8 @@ model Patient {
 ////////////////////////////////////////////////
 model Room {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String    @unique // ชื่อห้อง เช่น ห้องสัตว์ป่วยวิกฤต (CCU), ห้องสุนัขไม่ติดเชื้อ, ห้องแมวปลอดเชื้อ เป็นต้น
+  name_th   String? // ชื่อห้องภาษาไทย
+  name_en   String?   @unique // ชื่อห้อง เช่น ห้องสัตว์ป่วยวิกฤต (CCU), ห้องสุนัขไม่ติดเชื้อ, ห้องแมวปลอดเชื้อ เป็นต้น
   roomType  TypeRoom // ประเภทห้อง
   color     String    @default("#3B82F6") // สีประจำห้อง (ใช้สำหรับแสดงใน UI)
   status    Boolean   @default(true) // สถานะการใช้งาน (true = ใช้งานได้, false = ไม่ใช้งาน)
@@ -159,7 +162,7 @@ model Cage {
   id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   roomId       String        @db.Uuid // รหัสห้องที่กรงนี้อยู่ (foreign key)
   room         Room          @relation(fields: [roomId], references: [id]) // ความสัมพันธ์กับตาราง Room (กรงอยู่ในห้องหนึ่ง)
-  code         String        @unique // // เช่น CCU-LT10K-001 > ROOM = CCU , TYPE = LT10K , NUMBER = 001
+  code         String        @unique // // เช่น DOG-NI-LT10K-001 > ROOM = DOG-NI (ห้องสุนัขไม่ติดเชื้อ) , TYPE = U10 (กรงน้ำหนักน้อยกว่า 10 kg) , O2 ถ้ามี O2 ,SEQ = 001 (ลำดับกรงในห้อง)
   cageType     CageType // ประเภทกรง
   hasOxygen    Boolean       @default(false) // รองรับ Oxygen
   minWeightKg  Float? // ช่วงน้ำหนักต่ำสุด

@@ -2,9 +2,12 @@ import { Context, Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { swagger } from "@elysiajs/swagger";
 import { logger } from "./utils/logger";
+import { cmuItAccountRouter } from "./router/cmu_it_account";
+import { roomRouter } from "./router/rooms";
 import path from "path";
 import { promises as fs } from "fs";
 import mime from "mime-types";
+import { cageRouter } from "./router/cage";
 
 if (!process.env.JWT_SECRET) {
   throw new Error("❌ JWT_SECRET is missing in environment variables!");
@@ -82,12 +85,23 @@ const app = new Elysia({ prefix: "/ward/api/v1" })
       return new Response("File not found", { status: 404 });
     }
   })
+
+  //=======================================================================
+  // ตัวอย่าง route พื้นฐานสำหรับตรวจสอบว่า API ทำงานได้หรือไม่
+  //=======================================================================
   .get("/", ({ request }: Context & { request: any }) => ({
     IP: request.headers.get("x-forwarded-for") || "127.0.0.1",
     year: new Date().getFullYear(),
     status: "ok",
     runtime: "Congratulations! Your Ward API is running successfully.",
   }))
+  //=======================================================================
+  // เพิ่ม router สำหรับ CMU IT account authentication
+  .use(cmuItAccountRouter) // เพิ่ม router สำหรับ CMU IT account authentication
+  .use(roomRouter) // เพิ่ม router สำหรับ room
+  .use(cageRouter) // เพิ่ม router สำหรับ cage
+
+  //=======================================================================
 
   .onError((error) => {
     logger.error("Unhandled error in request handler", error);
@@ -99,5 +113,5 @@ const app = new Elysia({ prefix: "/ward/api/v1" })
 app.listen(PORT);
 
 logger.info(
-  `🦊 Ward API running at ${app.server?.hostname}:${app.server?.port} (watching for changes)`,
+  `🦊 Ward API running at ${app.server?.hostname}:${app.server?.port}`,
 );
